@@ -10,13 +10,11 @@ import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import javax.ws.rs.core.Response;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @RestController
 @RequestMapping("/keycloak")
@@ -47,7 +45,10 @@ public class KeycloakController {
     }
 
     @PostMapping("/user")
-    public ResponseEntity<String> createUser(String username, String password) {
+    public ResponseEntity<String> createUser(@RequestParam String username, @RequestParam String password) {
+        if (StringUtils.isEmpty(username) || StringUtils.isEmpty(password)) {
+            return ResponseEntity.badRequest().body("Empty username or password");
+        }
         CredentialRepresentation credentials = new CredentialRepresentation();
         credentials.setType(CredentialRepresentation.PASSWORD);
         credentials.setValue(password);
@@ -72,45 +73,53 @@ public class KeycloakController {
     }
 
     @PutMapping("/user")
-    public void updateUserDescriptionAttribute(String username, String description) {
+    public ResponseEntity<UserRepresentation> updateUserDescriptionAttribute(@RequestParam String username,
+                                                                             @RequestParam String description) {
         Keycloak keycloak = getKeycloakInstance();
-        UserRepresentation userRepresentation = keycloak.realm(keycloakRealm).users().search(username).get(0);
-        UserResource userResource = keycloak.realm(keycloakRealm).users().get(userRepresentation.getId());
-        Map<String, List<String>> attributes = new HashMap<>();
-        attributes.put("description", Arrays.asList(description));
-        userRepresentation.setAttributes(attributes);
-        userResource.update(userRepresentation);
-    }
-
-    @DeleteMapping("/user")
-    public void deleteUser(String username) {
-        Keycloak keycloak = getKeycloakInstance();
-        UsersResource users = keycloak.realm(keycloakRealm).users();
-        List<UserRepresentation> userRepresentations = users.search(username);
-        for (UserRepresentation userRepresentation : userRepresentations) {
-            if (userRepresentation.getUsername().equals(username)) {
-                keycloak.realm(keycloakRealm).users().delete(userRepresentation.getId());
-                break;
-            }
+        Optional<UserRepresentation> user = keycloak.realm(keycloakRealm).users().search(username).stream()
+                .filter(u -> u.getUsername().equals(username)).findFirst();
+        if (user.isPresent()) {
+            UserRepresentation userRepresentation = user.get();
+            UserResource userResource = keycloak.realm(keycloakRealm).users().get(userRepresentation.getId());
+            Map<String, List<String>> attributes = new HashMap<>();
+            attributes.put("description", Arrays.asList(description));
+            userRepresentation.setAttributes(attributes);
+            userResource.update(userRepresentation);
+            return ResponseEntity.ok().body(userRepresentation);
+        } else {
+            return ResponseEntity.badRequest().build();
         }
     }
 
+    @DeleteMapping("/user")
+    public void deleteUser(@RequestParam String username) {
+        Keycloak keycloak = getKeycloakInstance();
+        UsersResource users = keycloak.realm(keycloakRealm).users();
+        users.search(username).stream()
+                .forEach(user -> keycloak.realm(keycloakRealm).users().delete(user.getId()));
+    }
+
     @GetMapping("/roles")
-    public List<RoleRepresentation> getRoles() {
+    public ResponseEntity<List<RoleRepresentation>> getRoles() {
         Keycloak keycloak = getKeycloakInstance();
         ClientRepresentation clientRepresentation = keycloak.realm(keycloakRealm).clients().findByClientId(keycloakClient).get(0);
         List<RoleRepresentation> roles = keycloak.realm(keycloakRealm).clients().get(clientRepresentation.getId()).roles().list();
-        return roles;
+        return ResponseEntity.ok(roles);
     }
 
     @GetMapping("/roles-by-user")
-    public List<RoleRepresentation> getRolesByUser(@RequestParam("username") String username) {
+    public ResponseEntity<List<RoleRepresentation>> getRolesByUser(@RequestParam String username) {
         Keycloak keycloak = getKeycloakInstance();
-        UserRepresentation userRepresentation = keycloak.realm(keycloakRealm).users().search(username).get(0);
-        UserResource userResource = keycloak.realm(keycloakRealm).users().get(userRepresentation.getId());
-        ClientRepresentation clientRepresentation = keycloak.realm(keycloakRealm).clients().findByClientId(keycloakClient).get(0);
-
-        List<RoleRepresentation> roles = userResource.roles().clientLevel(clientRepresentation.getId()).listAll();
-        return roles;
+        Optional<UserRepresentation> user = keycloak.realm(keycloakRealm).users().search(username).stream()
+                .filter(u -> u.getUsername().equals(username)).findFirst();
+        if (user.isPresent()) {
+            UserRepresentation userRepresentation = user.get();
+            UserResource userResource = keycloak.realm(keycloakRealm).users().get(userRepresentation.getId());
+            ClientRepresentation clientRepresentation = keycloak.realm(keycloakRealm).clients().findByClientId(keycloakClient).get(0);
+            List<RoleRepresentation> roles = userResource.roles().clientLevel(clientRepresentation.getId()).listAll();
+            return ResponseEntity.ok(roles);
+        } else {
+            return ResponseEntity.badRequest().build();
+        }
     }
 }

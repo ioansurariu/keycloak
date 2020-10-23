@@ -41,6 +41,7 @@ public class SpringSecurity extends KeycloakWebSecurityConfigurerAdapter {
     @Override
     protected void configure(HttpSecurity http) throws Exception {
         super.configure(http);
+        http.cors().and().csrf().disable();
         http.authorizeRequests()
                 .anyRequest()
                 .permitAll();

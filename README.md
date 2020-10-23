@@ -18,6 +18,7 @@ mvn spring-boot:run
 
 * create, read, update and delete users
 
+*Sample for get users*
 ```java
 public List<UserRepresentation> getUsers() {
     Keycloak keycloak = getKeycloakInstance();
@@ -28,24 +29,29 @@ public List<UserRepresentation> getUsers() {
 * get the available roles
 
 ```java
-public List<RoleRepresentation> getRoles() {
+public ResponseEntity<List<RoleRepresentation>> getRoles() {
     Keycloak keycloak = getKeycloakInstance();
     ClientRepresentation clientRepresentation = keycloak.realm(keycloakRealm).clients().findByClientId(keycloakClient).get(0);
     List<RoleRepresentation> roles = keycloak.realm(keycloakRealm).clients().get(clientRepresentation.getId()).roles().list();
-    return roles;
+    return ResponseEntity.ok(roles);
 }
 ```
 
 * get roles for user
 
 ```java
-public List<RoleRepresentation> getRolesByUser(@RequestParam("username") String username) {
+public ResponseEntity<List<RoleRepresentation>> getRolesByUser(@RequestParam String username) {
     Keycloak keycloak = getKeycloakInstance();
-    UserRepresentation userRepresentation = keycloak.realm(keycloakRealm).users().search(username).get(0);
-    UserResource userResource = keycloak.realm(keycloakRealm).users().get(userRepresentation.getId());
-    ClientRepresentation clientRepresentation = keycloak.realm(keycloakRealm).clients().findByClientId(keycloakClient).get(0);
-
-    List<RoleRepresentation> roles = userResource.roles().clientLevel(clientRepresentation.getId()).listAll();
-    return roles;
+    Optional<UserRepresentation> user = keycloak.realm(keycloakRealm).users().search(username).stream()
+            .filter(u -> u.getUsername().equals(username)).findFirst();
+    if (user.isPresent()) {
+        UserRepresentation userRepresentation = user.get();
+        UserResource userResource = keycloak.realm(keycloakRealm).users().get(userRepresentation.getId());
+        ClientRepresentation clientRepresentation = keycloak.realm(keycloakRealm).clients().findByClientId(keycloakClient).get(0);
+        List<RoleRepresentation> roles = userResource.roles().clientLevel(clientRepresentation.getId()).listAll();
+        return ResponseEntity.ok(roles);
+    } else {
+        return ResponseEntity.badRequest().build();
+    }
 }
 ```
